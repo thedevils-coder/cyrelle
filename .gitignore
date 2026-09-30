@@ -15,6 +15,7 @@ apps/admin/dist
 .DS_Store
 uploads
 tmp
+dump.rdb
 *.tsbuildinfo
 .prisma
 apps/api/generated
