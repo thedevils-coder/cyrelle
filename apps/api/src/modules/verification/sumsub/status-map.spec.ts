@@ -1,4 +1,4 @@
-import { mapSumsubStatus, parseSumsubTimestamp, safeRejectLabels } from './status-map';
+import { canApplyVerificationTransition, mapSumsubStatus, parseSumsubTimestamp, safeRejectLabels } from './status-map';
 
 describe('Sumsub status mapping', () => {
   it('maps approved, pending, review, retry rejection, and final rejection', () => {
@@ -18,6 +18,21 @@ describe('Sumsub status mapping', () => {
     });
     expect(mapSumsubStatus({ reviewStatus: 'init' })?.status).toBe('IN_PROGRESS');
     expect(mapSumsubStatus({ type: 'applicantPersonalInfoChanged' })).toBeNull();
+  });
+
+  it('rejects downgrades and cancelled revival, and still accepts later final results', () => {
+    expect(canApplyVerificationTransition('VERIFIED', 'IN_PROGRESS', 'applicantCreated')).toBe(false);
+    expect(canApplyVerificationTransition('VERIFIED', 'SUBMITTED', 'applicantPending')).toBe(false);
+    expect(canApplyVerificationTransition('RESTRICTED', 'IN_PROGRESS', 'applicantCreated')).toBe(false);
+    expect(canApplyVerificationTransition('RESTRICTED', 'FAILED', 'applicantReviewed')).toBe(true);
+    expect(canApplyVerificationTransition('VERIFIED', 'FAILED', 'applicantReviewed')).toBe(true);
+    expect(canApplyVerificationTransition('VERIFIED', 'RESTRICTED', 'applicantReviewed')).toBe(true);
+    expect(canApplyVerificationTransition('FAILED', 'VERIFIED', 'applicantReviewed')).toBe(true);
+    expect(canApplyVerificationTransition('FAILED', 'SUBMITTED', 'applicantPending')).toBe(true);
+    expect(canApplyVerificationTransition('VERIFIED', 'IN_PROGRESS', 'applicantReset')).toBe(true);
+    expect(canApplyVerificationTransition('CANCELLED', 'IN_PROGRESS', 'applicantReset')).toBe(false);
+    expect(canApplyVerificationTransition('VERIFIED', 'CANCELLED', 'applicantDeleted')).toBe(true);
+    expect(canApplyVerificationTransition('MANUAL_REVIEW', 'SUBMITTED', 'applicantPending')).toBe(false);
   });
 
   it('parses Sumsub UTC timestamps and keeps only reject-label codes', () => {

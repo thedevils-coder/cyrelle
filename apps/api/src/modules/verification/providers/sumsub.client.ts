@@ -49,7 +49,7 @@ export class SumsubClient {
         body: raw || undefined,
       });
     } catch (error) {
-      this.logger.error(`Sumsub network error ${method} ${pathWithQuery.split('?')[0]}`);
+      this.logger.error(`Sumsub network error ${method} ${redactSumsubRoute(pathWithQuery)}`);
       throw error;
     }
     const text = await response.text();
@@ -65,7 +65,7 @@ export class SumsubClient {
     if (!response.ok) {
       const correlationId = typeof json.correlationId === 'string' ? json.correlationId : null;
       if (response.status !== 404) {
-        const route = pathWithQuery.split('?')[0].replace(/externalUserId=[^/]+/, 'externalUserId').replace(/applicants\/[^/]+/, 'applicants/:id');
+        const route = redactSumsubRoute(pathWithQuery);
         this.logger.error(`Sumsub ${method} ${route} failed status=${response.status} correlationId=${correlationId ?? 'none'}`);
       }
       throw new SumsubRequestError(response.status, correlationId);
@@ -112,4 +112,9 @@ export class SumsubClient {
   async deactivate(applicantId: string): Promise<void> {
     await this.request('PATCH', `/resources/applicants/${encodeURIComponent(applicantId)}/presence/deactivated`);
   }
+}
+
+/** Drop external user ids and applicant ids before a path is written to logs. */
+export function redactSumsubRoute(pathWithQuery: string): string {
+  return pathWithQuery.split('?')[0].replace(/externalUserId=[^/]+/, 'externalUserId').replace(/applicants\/[^/]+/, 'applicants/:id');
 }

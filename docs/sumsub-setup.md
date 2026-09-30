@@ -62,7 +62,9 @@ SUMSUB_TOKEN_TTL_SECS=600
 IDENTITY_VERIFICATION_MAX_RETRIES=3
 ```
 
-`SUMSUB_ENVIRONMENT` is documentation for operators. The token itself selects sandbox or production. Never commit the filled `.env` file.
+`SUMSUB_ENVIRONMENT=sandbox` is the local and CI setting. The token itself selects the Sumsub sandbox or production dashboard, and both dashboards use `https://api.sumsub.com`. Cyrelle still refuses `SUMSUB_ENVIRONMENT=production` unless `NODE_ENV=production` or `ALLOW_SUMSUB_PRODUCTION=true`. That stop is there so a production token pasted into a laptop or a test run does not call production. Tests set `SUMSUB_BASE_URL` to `http://127.0.0.1:9` and also refuse `api.sumsub.com` while `NODE_ENV=test`.
+
+Leave any of `SUMSUB_APP_TOKEN`, `SUMSUB_SECRET_KEY`, or `SUMSUB_WEBHOOK_SECRET` empty and the API still boots. Start, retry, and token refresh return 503. A webhook with no secret returns 503. Never commit the filled `.env` file. `.env` is gitignored. `.env.example` has empty secret fields.
 
 ## 6. Run Cyrelle locally
 
@@ -96,7 +98,7 @@ Use a sandbox path that Sumsub rejects with resubmission (`reviewRejectType` `RE
 
 Use a level or sandbox signal that puts the applicant `onHold`. Status becomes `MANUAL_REVIEW`. The member sees: "Your verification is being reviewed. We'll notify you when it's complete."
 
-Admins can also set manual review on a record. They cannot mark a Sumsub record verified from Cyrelle. Final `RED` results become `RESTRICTED` and remove Premium Blue Tick.
+Admins can set manual review or restricted on a record. They cannot mark a Sumsub record verified or failed from Cyrelle. Final `RED` results become `RESTRICTED` and remove Premium Blue Tick. A `RETRY` rejection becomes `FAILED` and also removes the tick, even while Premium is active.
 
 ## 12. Move to production
 
@@ -109,10 +111,45 @@ Admins can also set manual review on a record. They cannot mark a Sumsub record 
 - Confirm account deletion deactivates the Sumsub applicant and that an owner requests permanent deletion in the Sumsub dashboard when your Sumsub contract provides that action.
 - Confirm logs and admin screens still show no document images, access tokens, or secrets.
 
-## Mobile SDK note
+## Mobile integration
 
-The shipping Expo app uses WebSDK so Expo Go and Expo web keep working. Sumsub's React Native module is the native alternative:
+Current Sumsub docs describe two mobile paths.
+
+The recommended device SDK is `@sumsub/react-native-mobilesdk-module` (docs currently list 1.46.1):
 
 https://docs.sumsub.com/docs/react-native-module
 
-It is not installed in this repository because it requires an Expo development build (`expo-dev-client` and `expo prebuild`). Add `@sumsub/react-native-mobilesdk-module` only in that build, initialize it with `SNSMobileSDK.init(accessToken, expirationHandler)`, and keep using `POST /v1/identity-verification/start` and `POST /v1/identity-verification/token` for tokens. Do not put the Sumsub secret in the app. The webhook remains the decision.
+It is not installed here. A static import breaks Expo Go because Metro resolves the native module. The existing app keeps working in Expo Go and Expo web without it.
+
+The path this repository ships is Sumsub's documented WebView fallback for WebSDK: https://docs.sumsub.com/docs/get-started-with-web-sdk. Web uses an iframe. Native uses `react-native-webview` with DOM storage, inline playback, camera and microphone capture, fullscreen autoplay disabled, and navigation limited to `https://*.sumsub.com`. Older iOS versions may only allow the camera in Safari or `SFSafariViewController`. The screen does not treat an SDK callback as `VERIFIED`.
+
+### Run the current app
+
+```text
+npm run dev:mobile
+```
+
+That starts Expo. Use Expo Go or a web browser. Point `EXPO_PUBLIC_API_URL` at an API the device can reach.
+
+### Add the native module later
+
+Do this in a development build, not by adding the package to the Expo Go app.
+
+1. `npx expo install expo-dev-client`
+2. `npm install @sumsub/react-native-mobilesdk-module --workspace @cyrelle/mobile`
+3. Android: Kotlin 1.9.25, `minSdkVersion` 23, and this Maven repository in `android/build.gradle`:
+
+```groovy
+maven { url "https://maven.sumsub.com/repository/maven-public/" }
+```
+
+4. iOS: platform `13.0`, bitcode off, and these sources at the top of `ios/Podfile`:
+
+```ruby
+source 'https://cdn.cocoapods.org/'
+source 'https://github.com/sumsub/Specs.git'
+```
+
+5. Keep the camera, microphone, photo, and location purpose strings already in `apps/mobile/app.json`.
+6. `npx expo prebuild` from `apps/mobile`, then `npx expo run:ios` or `npx expo run:android`.
+7. Initialize with `SNSMobileSDK.init(accessToken, expirationHandler)`. Keep requesting tokens from `POST /v1/identity-verification/start` and `POST /v1/identity-verification/token`. Do not put the Sumsub secret in the app. Keep the webhook as the decision. SDK statuses such as Approved are not authoritative.

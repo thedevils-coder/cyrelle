@@ -88,7 +88,7 @@ SOS notifies emergency contacts and stores a timestamped event. Official numbers
 
 ## Identity
 
-Identity checks use Sumsub when `SUMSUB_APP_TOKEN` and `SUMSUB_SECRET_KEY` are set. Cyrelle stores the result and the Sumsub applicant reference. It does not store government ID images, selfies, or biometric templates. The mobile app opens Sumsub WebSDK. A signed webhook is the only authoritative result. Premium Blue Tick requires an active Premium subscription and status `VERIFIED`. See `docs/sumsub-setup.md` and `docs/identity-verification-architecture.md`.
+Identity checks use Sumsub when the app token, app secret, and webhook secret are all set. Cyrelle stores the result and the Sumsub applicant reference. It does not store government ID images, selfies, or biometric templates. Web uses Sumsub WebSDK. Native uses that WebSDK inside a WebView, which Sumsub documents as a fallback; the React Native module needs a development build. A signed webhook is the only authoritative result. Premium Blue Tick requires an active Premium subscription and status `VERIFIED`. See `docs/sumsub-setup.md` and `docs/identity-verification-architecture.md`.
 
 Without Sumsub credentials the rest of Cyrelle still runs. Starting verification returns a user-facing unavailable message. Sandbox and production both use `https://api.sumsub.com`; the app token selects the Sumsub environment.
 

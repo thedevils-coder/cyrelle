@@ -4,6 +4,17 @@ import WebView from 'react-native-webview';
 
 type TokenWindow = Window & { __cyrelleResolveToken?: (token: string) => void };
 
+function allowSumsubNavigation(url: string): boolean {
+  if (url === 'about:blank' || url.startsWith('data:') || url.startsWith('blob:')) return true;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:') return false;
+    return parsed.hostname === 'sumsub.com' || parsed.hostname.endsWith('.sumsub.com');
+  } catch {
+    return false;
+  }
+}
+
 export function SumsubFrame({ html, refreshToken, onMessage }: { html: string; refreshToken?: string | null; onMessage: (type: string) => void }) {
   const webview = useRef<WebView>(null);
   const iframe = useRef<HTMLIFrameElement | null>(null);
@@ -65,8 +76,11 @@ export function SumsubFrame({ html, refreshToken, onMessage }: { html: string; r
       javaScriptEnabled
       domStorageEnabled
       allowsInlineMediaPlayback
+      allowsFullscreenVideo={false}
       mediaPlaybackRequiresUserAction={false}
       mediaCapturePermissionGrantType="grant"
+      setSupportMultipleWindows={false}
+      onShouldStartLoadWithRequest={(request) => allowSumsubNavigation(request.url)}
       accessibilityLabel="Secure identity verification"
     />
   );

@@ -40,6 +40,7 @@ describe('Sumsub identity verification', () => {
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
+      if (url.includes('api.sumsub.com')) throw new Error('test called the real Sumsub host');
       const method = init?.method || 'GET';
       const body = typeof init?.body === 'string' ? init.body : '';
       const headers = new Headers(init?.headers);
@@ -205,6 +206,10 @@ describe('Sumsub identity verification', () => {
     const withPremium = await request(app.getHttpServer()).get('/v1/me/entitlements').set('Authorization', `Bearer ${member.token}`);
     expect(withPremium.body.plan).toBe('PREMIUM');
     expect(withPremium.body.premiumBlueTick).toBe(true);
+    const notices = await prisma.notification.count({ where: { userId: member.userId, body: 'Your identity verification is complete.' } });
+    expect((await webhook(approved.raw, approved.digest, approved.algorithm)).body.duplicate).toBe(true);
+    expect(await prisma.notification.count({ where: { userId: member.userId, body: 'Your identity verification is complete.' } })).toBe(notices);
+    expect((await request(app.getHttpServer()).get('/v1/me/entitlements').set('Authorization', `Bearer ${member.token}`)).body.premiumBlueTick).toBe(true);
 
     const finalRaw = JSON.stringify({
       applicantId: `applicant-${member.userId}`,
@@ -305,6 +310,12 @@ describe('Sumsub identity verification', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'VERIFIED' });
     expect(blocked.status).toBe(403);
+    const failedDecision = await request(app.getHttpServer())
+      .post(`/v1/admin/verifications/${sumsubRecord.id}/decision`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'FAILED' });
+    expect(failedDecision.status).toBe(403);
+    expect((await prisma.userVerification.findUnique({ where: { id: sumsubRecord.id } }))?.status).not.toBe('FAILED');
 
     const documents = await request(app.getHttpServer())
       .post(`/v1/admin/verifications/${record.id}/document`)
@@ -318,6 +329,87 @@ describe('Sumsub identity verification', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'VERIFIED', note: 'Manual provider review' });
     expect(reviewed.status).toBe(201);
+  });
+
+  it('walks submitted to verified and ignores downgrades, missing timestamps, and deleted applicants', async () => {
+    const member = await register('lifecycle', 'lifecycle@cyrelle.test');
+    await request(app.getHttpServer()).post('/v1/identity-verification/start').set('Authorization', `Bearer ${member.token}`).send({}).expect(201);
+
+    async function send(payload: Record<string, unknown>, alg: 'sha256' | 'sha512' = 'sha256') {
+      const event = signed(JSON.stringify(payload), alg);
+      const response = await webhook(event.raw, event.digest, event.algorithm);
+      expect(response.status).toBe(200);
+    }
+
+    await send({
+      applicantId: `applicant-${member.userId}`,
+      correlationId: 'life-pending',
+      externalUserId: member.userId,
+      type: 'applicantPending',
+      reviewStatus: 'pending',
+      createdAtMs: '2026-06-01 08:00:00.000',
+    }, 'sha512');
+    expect((await prisma.userVerification.findUnique({ where: { userId: member.userId } }))?.status).toBe('SUBMITTED');
+
+    await send({
+      applicantId: `applicant-${member.userId}`,
+      correlationId: 'life-green',
+      externalUserId: member.userId,
+      type: 'applicantReviewed',
+      reviewStatus: 'completed',
+      createdAtMs: '2026-06-01 09:00:00.000',
+      reviewResult: { reviewAnswer: 'GREEN' },
+    });
+    expect((await prisma.userVerification.findUnique({ where: { userId: member.userId } }))?.status).toBe('VERIFIED');
+
+    await send({
+      applicantId: `applicant-${member.userId}`,
+      correlationId: 'life-created-later',
+      externalUserId: member.userId,
+      type: 'applicantCreated',
+      reviewStatus: 'init',
+      createdAtMs: '2026-06-01 10:00:00.000',
+    });
+    expect((await prisma.userVerification.findUnique({ where: { userId: member.userId } }))?.status).toBe('VERIFIED');
+
+    const beforeMissing = await prisma.notification.count({ where: { userId: member.userId } });
+    await send({
+      applicantId: `applicant-${member.userId}`,
+      correlationId: 'life-missing-time',
+      externalUserId: member.userId,
+      type: 'applicantReviewed',
+      reviewStatus: 'completed',
+      reviewResult: { reviewAnswer: 'RED', reviewRejectType: 'FINAL', rejectLabels: ['FORGERY'] },
+    });
+    expect((await prisma.userVerification.findUnique({ where: { userId: member.userId } }))?.status).toBe('VERIFIED');
+    expect(await prisma.notification.count({ where: { userId: member.userId } })).toBe(beforeMissing);
+
+    await send({
+      applicantId: `applicant-${member.userId}`,
+      correlationId: 'life-deleted',
+      externalUserId: member.userId,
+      type: 'applicantDeleted',
+      createdAtMs: '2026-06-01 11:00:00.000',
+    });
+    expect((await prisma.userVerification.findUnique({ where: { userId: member.userId } }))?.status).toBe('CANCELLED');
+    expect((await request(app.getHttpServer()).post('/v1/identity-verification/retry').set('Authorization', `Bearer ${member.token}`).send({})).status).toBe(403);
+
+    const failed = await register('failedprem', 'failedprem@cyrelle.test');
+    await request(app.getHttpServer()).post('/v1/auth/verify-email').send({ token: failed.verify }).expect(201);
+    await request(app.getHttpServer()).post('/v1/identity-verification/start').set('Authorization', `Bearer ${failed.token}`).send({}).expect(201);
+    await send({
+      applicantId: `applicant-${failed.userId}`,
+      correlationId: 'life-failed',
+      externalUserId: failed.userId,
+      type: 'applicantReviewed',
+      reviewStatus: 'completed',
+      createdAtMs: '2026-06-02 08:00:00.000',
+      reviewResult: { reviewAnswer: 'RED', reviewRejectType: 'RETRY', rejectLabels: ['UNSATISFACTORY_PHOTOS'] },
+    });
+    expect((await request(app.getHttpServer()).post('/v1/premium/checkout').set('Authorization', `Bearer ${failed.token}`).send({ interval: 'MONTH' })).status).toBe(201);
+    const entitlements = await request(app.getHttpServer()).get('/v1/me/entitlements').set('Authorization', `Bearer ${failed.token}`);
+    expect(entitlements.body.plan).toBe('PREMIUM');
+    expect(entitlements.body.premiumBlueTick).toBe(false);
   });
 
   it('rate limits repeated verification starts', async () => {

@@ -1,16 +1,29 @@
 import { ConfigService } from '@nestjs/config';
 import { SumsubClient, SumsubRequestError } from './sumsub.client';
 import { EnsureApplicantInput, EnsureApplicantResult, IdentityVerificationProvider, SdkTokenInput } from './identity-verification.provider';
+import { resolveSumsubRuntime, SumsubRuntimeInput } from '../sumsub/runtime';
+
+export function readSumsubRuntimeInput(config: ConfigService): SumsubRuntimeInput {
+  return {
+    appToken: config.get<string>('SUMSUB_APP_TOKEN') ?? '',
+    secretKey: config.get<string>('SUMSUB_SECRET_KEY') ?? '',
+    webhookSecret: config.get<string>('SUMSUB_WEBHOOK_SECRET') ?? '',
+    environment: config.get<string>('SUMSUB_ENVIRONMENT') ?? '',
+    baseUrl: config.get<string>('SUMSUB_BASE_URL') ?? '',
+    nodeEnv: process.env.NODE_ENV ?? 'development',
+    allowProduction: config.get<string>('ALLOW_SUMSUB_PRODUCTION') === 'true',
+  };
+}
 
 export class SumsubIdentityVerificationProvider implements IdentityVerificationProvider {
   readonly name = 'sumsub';
   private readonly client: SumsubClient | null;
+  readonly unavailableReason: string;
 
   constructor(config: ConfigService, fetchImpl?: typeof fetch) {
-    const appToken = config.get<string>('SUMSUB_APP_TOKEN')?.trim() || '';
-    const secretKey = config.get<string>('SUMSUB_SECRET_KEY')?.trim() || '';
-    const baseUrl = (config.get<string>('SUMSUB_BASE_URL') || 'https://api.sumsub.com').replace(/\/$/, '');
-    this.client = appToken && secretKey ? new SumsubClient({ appToken, secretKey, baseUrl, fetchImpl }) : null;
+    const decision = resolveSumsubRuntime(readSumsubRuntimeInput(config), fetchImpl);
+    this.client = decision.client;
+    this.unavailableReason = decision.configured ? 'configured' : decision.reason;
   }
 
   configured(): boolean {

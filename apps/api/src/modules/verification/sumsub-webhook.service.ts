@@ -6,7 +6,7 @@ import { resolvePersonalEntitlements } from '@cyrelle/shared';
 import { AppError } from '../../common/app-error';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
-import { auditActionForStatus, mapSumsubStatus, parseSumsubTimestamp, safeRejectLabels, verificationUserMessage } from './sumsub/status-map';
+import { auditActionForStatus, canApplyVerificationTransition, mapSumsubStatus, parseSumsubTimestamp, safeRejectLabels, verificationUserMessage } from './sumsub/status-map';
 import { verifySumsubWebhookDigest } from './sumsub/signature';
 
 const OPEN_STATUSES: SubscriptionStatus[] = [SubscriptionStatus.ACTIVE, SubscriptionStatus.GRACE, SubscriptionStatus.PAST_DUE];
@@ -82,9 +82,11 @@ export class SumsubWebhookService {
 
         const verification = user ? await tx.userVerification.findUnique({ where: { userId: user.id } }) : null;
         const stale = Boolean(
-          eventTime && verification?.lastProviderEventAt && eventTime.getTime() < verification.lastProviderEventAt.getTime(),
+          verification?.lastProviderEventAt && (!eventTime || eventTime.getTime() < verification.lastProviderEventAt.getTime()),
         );
-        const apply = Boolean(mapped && verification && user && !stale);
+        const transitionAllowed = !mapped || !verification || canApplyVerificationTransition(verification.status, mapped.status, type);
+        const apply = Boolean(mapped && verification && user && !stale && transitionAllowed);
+        const ignoredTransition = Boolean(mapped && verification && user && !stale && !transitionAllowed);
 
         await tx.identityVerificationEvent.create({
           data: {
@@ -106,7 +108,7 @@ export class SumsubWebhookService {
             actorId: user?.id,
             action: 'SUMSUB_WEBHOOK_RECEIVED',
             target: verification?.id,
-            metadata: { eventType: type || 'unknown', applied: apply, stale, sandboxMode },
+            metadata: { eventType: type || 'unknown', applied: apply, stale, ignoredTransition, sandboxMode },
           },
         });
 

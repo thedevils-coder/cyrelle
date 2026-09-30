@@ -25,6 +25,30 @@ export interface MappedVerificationStatus {
   canRetry: boolean;
 }
 
+const OPEN_FOR_PROGRESS = new Set(['NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'FAILED', 'EXPIRED']);
+const OPEN_FOR_SUBMITTED = new Set(['NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'SUBMITTED', 'FAILED', 'EXPIRED']);
+const OPEN_FOR_REVIEW = new Set(['NOT_STARTED', 'PENDING', 'IN_PROGRESS', 'SUBMITTED', 'FAILED', 'EXPIRED', 'MANUAL_REVIEW']);
+
+/**
+ * A signed webhook may move the check forward or replace a finished result with a later
+ * Sumsub decision. It must not let an in-progress event erase VERIFIED, RESTRICTED, or
+ * MANUAL_REVIEW, and it must not revive a cancelled check. applicantReset is the
+ * explicit exception that returns a live check to IN_PROGRESS.
+ */
+export function canApplyVerificationTransition(current: string, next: string, eventType?: string | null): boolean {
+  if (current === next) return true;
+  if (current === 'CANCELLED') return false;
+  const type = eventType?.trim() || '';
+  if (type === 'applicantDeleted' || type === 'applicantDeactivated') return next === 'CANCELLED';
+  if (next === 'CANCELLED') return false;
+  if (type === 'applicantReset') return next === 'IN_PROGRESS';
+  if (next === 'VERIFIED' || next === 'FAILED' || next === 'RESTRICTED') return true;
+  if (next === 'MANUAL_REVIEW') return OPEN_FOR_REVIEW.has(current);
+  if (next === 'SUBMITTED') return OPEN_FOR_SUBMITTED.has(current);
+  if (next === 'IN_PROGRESS' || next === 'PENDING') return OPEN_FOR_PROGRESS.has(current);
+  return false;
+}
+
 /**
  * Maps current Sumsub review statuses and user-verification webhook types
  * onto Cyrelle statuses. Sumsub names stay inside this file.

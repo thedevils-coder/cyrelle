@@ -11,6 +11,20 @@ describe('Sumsub signatures', () => {
     expect(signSumsubRequest('secret', timestamp, method, path, body)).toBe(expected);
   });
 
+  it('verifies webhook digests with the algorithm header, including the mislabeled sample', () => {
+    const secret = 'SoMe_SeCrEt_KeY';
+    const raw = Buffer.from('someText');
+    const publishedSample = 'f6e92ffe371718694d46e28436f76589312df8db';
+    const sha256 = createHmac('sha256', secret).update(raw).digest('hex');
+    const sha512 = createHmac('sha512', secret).update(raw).digest('hex');
+    expect(sha256).not.toBe(publishedSample);
+    expect(verifySumsubWebhookDigest(secret, raw, sha256, 'HMAC_SHA256_HEX')).toBe(true);
+    expect(verifySumsubWebhookDigest(secret, raw, publishedSample, 'HMAC_SHA256_HEX')).toBe(false);
+    expect(verifySumsubWebhookDigest(secret, raw, publishedSample, 'HMAC_SHA1_HEX')).toBe(true);
+    expect(verifySumsubWebhookDigest(secret, raw, sha512, 'HMAC_SHA512_HEX')).toBe(true);
+    expect(verifySumsubWebhookDigest(secret, raw, sha256.toUpperCase(), 'HMAC_SHA256_HEX')).toBe(true);
+  });
+
   it('accepts a SHA-256 webhook digest of the raw body and rejects tampering', () => {
     const secret = 'sandbox-webhook-secret';
     const raw = Buffer.from('{"type":"applicantReviewed","reviewResult":{"reviewAnswer":"GREEN"}}');

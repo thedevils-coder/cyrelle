@@ -16,7 +16,7 @@ IdentityVerificationService
 
 `SumsubWebhookService` accepts Sumsub webhooks, checks the signature, and updates Cyrelle status. Mobile and web clients cannot set `VERIFIED`.
 
-Manual review is an admin decision on records whose provider is `manual`. Sumsub records are not marked verified from the admin dashboard. Admins can move a record to manual review or restricted.
+Manual review is an admin decision on records whose provider is `manual`. Admins cannot set a Sumsub record to `VERIFIED` or `FAILED`. Those results arrive only from a signed Sumsub webhook. Admins can still move a record to manual review or restricted, and that action is audited.
 
 ## What Cyrelle stores
 
@@ -48,7 +48,9 @@ Sumsub names stay in `apps/api/src/modules/verification/sumsub/status-map.ts`.
 
 `reviewAnswer` is applied only when the review is completed, matching Sumsub's rule. Personal-info webhooks do not change status.
 
-A later webhook can replace an earlier result. Sumsub documents that an approved applicant can later receive `RED`. An older `createdAtMs` does not overwrite a newer result. The same `correlationId` is stored once and does not create a second notification.
+A later completed webhook can replace an earlier result. Sumsub documents that an approved applicant can later receive `RED`, including `FINAL` or `RETRY`. Cyrelle accepts that, and it accepts `FAILED` becoming `VERIFIED` after a real resubmission. It does not let `applicantCreated` or `applicantPending` move `VERIFIED`, `RESTRICTED`, or `MANUAL_REVIEW` backward. `applicantReset` can return a live check to `IN_PROGRESS`. `applicantDeleted` and `applicantDeactivated` set `CANCELLED`. A cancelled check is not reopened by a later webhook.
+
+An event is stale when `createdAtMs` is missing or older than `lastProviderEventAt`. A stale event is stored and not applied. The same `correlationId` is stored once and does not create a second notification or change entitlements. Sumsub does not publish an expired review status, so this provider does not write `EXPIRED`.
 
 ## Retries
 
@@ -86,7 +88,9 @@ Status and history are always loaded for the signed-in user. There is no user id
 
 ## Webhook security
 
-Sumsub signs the raw body with the webhook secret and sends `X-Payload-Digest` plus `X-Payload-Digest-Alg` (`HMAC_SHA256_HEX`, `HMAC_SHA512_HEX`, or legacy `HMAC_SHA1_HEX`). Cyrelle compares the digest with a timing-safe check. Missing or unknown algorithms are rejected. The endpoint uses the raw request bytes, not a re-serialized JSON body.
+Sumsub's webhook manager signs the raw HTTP body bytes with the webhook secret from the webhook configuration. That secret is separate from the app token secret used for `X-App-Access-Sig`. The headers are `X-Payload-Digest` and `X-Payload-Digest-Alg`. New webhooks default to `HMAC_SHA256_HEX`. `HMAC_SHA512_HEX` is optional. `HMAC_SHA1_HEX` is legacy: webhooks created before the SHA256 default, with no algorithm chosen, still send SHA1 until edited. Cyrelle follows the algorithm header. Sumsub's published `testDigest` sample response is labeled `HMAC_SHA256_HEX` but the digest of `someText` is the SHA-1 value; the verifier does not treat that sample as SHA-256.
+
+The Nest app is created with `rawBody: true`. The digest is computed on those bytes, not on `JSON.stringify` of the parsed body. Comparison uses `timingSafeEqual` on lowercase hex and rejects a missing algorithm, an unknown algorithm, or a different length. Invalid signatures return 401. Sumsub treats 401, 403, and 404 as permanent delivery failures. A missing webhook secret returns 503 and does not crash the API.
 
 Rejected webhooks write `SUMSUB_WEBHOOK_REJECTED` with a reason code only. Accepted webhooks write `SUMSUB_WEBHOOK_RECEIVED` and, when the status changes, one of:
 
@@ -104,13 +108,15 @@ Start and retry are limited to 30 requests a minute per client. The webhook limi
 
 ## Mobile
 
-Expo Go cannot load `@sumsub/react-native-mobilesdk-module` because that package needs a development build. The app therefore uses Sumsub WebSDK, which Sumsub documents for web, inside a WebView on native and an iframe on web. The page loads `https://static.sumsub.com/idensic/static/sns-websdk-builder.js` and receives only a short-lived SDK access token from the Cyrelle API. The SDK calls back to the API for a new token. The screen polls Cyrelle for the result. SDK events are not treated as the decision.
+Sumsub's recommended device integration is `@sumsub/react-native-mobilesdk-module` (current docs: 1.46.1). It is a native module. Importing it breaks Expo Go, so it is not a dependency of this app.
 
-A production binary that needs the native camera flow can add the official React Native module in a development build. See `docs/sumsub-setup.md`.
+The shipping app uses the official WebSDK (`https://static.sumsub.com/idensic/static/sns-websdk-builder.js`) in an iframe on web. On native it loads that same WebSDK in `react-native-webview`. Sumsub documents this WebView path as a fallback and requires local storage, camera access, inline HTML5 video, and fullscreen autoplay disabled. Older iOS builds may only expose the camera through Safari or `SFSafariViewController`. The WebView stays on `https://*.sumsub.com`, enables DOM storage, grants media capture, and disables fullscreen video. The page receives only a short-lived SDK access token. SDK events do not set `VERIFIED`; the screen polls Cyrelle, and the webhook is the decision.
+
+See `docs/sumsub-setup.md` for the development-build steps if you later install the native module.
 
 ## Account deletion
 
-Cyrelle calls Sumsub `PATCH /resources/applicants/{applicantId}/presence/deactivated` when an applicant id exists and credentials are configured. That deactivates the profile. It does not permanently delete Sumsub data. Permanent deletion is a Sumsub dashboard action for accounts that have the delete permission, and some accounts archive data before removal. Cyrelle then clears its own provider ids, reasons, and any legacy document ciphertext. Financial records can remain where the law requires them. If the Sumsub call fails, Cyrelle still completes local deletion and writes an audit row with `deactivated: false`.
+Cyrelle calls Sumsub `PATCH /resources/applicants/{applicantId}/presence/deactivated` when an applicant id exists and credentials are configured. Sumsub's current deactivate method hides the profile from operators and ignores it in duplicate checks. The record remains in Sumsub's database and can be reactivated with `activated`. Sumsub also refuses deactivation while review status is `pending`, `queued`, or `prechecked`. This call does not permanently delete Sumsub data. Permanent deletion, when an account has it, is a separate Sumsub dashboard owner action and is often limited and archived first. Cyrelle then clears its own provider ids, reasons, and any legacy document ciphertext, and sets the local status to `CANCELLED`. Financial records can remain where the law requires them. If the Sumsub call fails, Cyrelle still completes local deletion and writes an audit row with `deactivated: false` and `permanentDeletion: false`.
 
 ## Country coverage
 

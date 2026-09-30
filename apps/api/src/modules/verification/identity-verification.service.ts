@@ -9,7 +9,8 @@ import { EntitlementsService } from '../entitlements/entitlements.service';
 import { IdentityVerificationProvider } from './providers/identity-verification.provider';
 import { ManualIdentityVerificationProvider } from './providers/manual.provider';
 import { SumsubRequestError } from './providers/sumsub.client';
-import { SumsubIdentityVerificationProvider } from './providers/sumsub.provider';
+import { readSumsubRuntimeInput, SumsubIdentityVerificationProvider } from './providers/sumsub.provider';
+import { resolveSumsubRuntime } from './sumsub/runtime';
 import { toAlpha3Country } from './sumsub/countries';
 import { retryDecision, retryDenialMessage } from './sumsub/retry';
 import { auditActionForStatus } from './sumsub/status-map';
@@ -262,5 +263,13 @@ export class IdentityVerificationService {
 
 export function configuredProvider(config: ConfigService): IdentityVerificationProvider {
   const sumsub = new SumsubIdentityVerificationProvider(config);
-  return sumsub.configured() ? sumsub : new ManualIdentityVerificationProvider();
+  if (sumsub.configured()) return sumsub;
+  const decision = resolveSumsubRuntime(readSumsubRuntimeInput(config));
+  const message = `Sumsub is not active (${decision.reason}). Cyrelle keeps running without provider calls.`;
+  if (decision.logLevel === 'error') {
+    new Logger('IdentityVerification').error(message);
+  } else {
+    new Logger('IdentityVerification').warn(message);
+  }
+  return new ManualIdentityVerificationProvider();
 }

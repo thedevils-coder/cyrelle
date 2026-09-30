@@ -89,8 +89,8 @@ export class AdminService {
   async decideVerification(actor: AuthUser, id: string, status: 'VERIFIED' | 'FAILED' | 'MANUAL_REVIEW' | 'RESTRICTED', note?: string) {
     const current = await this.prisma.userVerification.findUnique({ where: { id } });
     if (!current) throw new AppError(404, 'NOT_FOUND', 'Verification record not found');
-    if (status === 'VERIFIED' && current.provider === 'sumsub') {
-      throw new AppError(403, 'PROVIDER_AUTHORITATIVE', 'Sumsub verification results arrive by signed webhook. Manual approval is not available for this record.');
+    if ((status === 'VERIFIED' || status === 'FAILED') && current.provider === 'sumsub') {
+      throw new AppError(403, 'PROVIDER_AUTHORITATIVE', 'Sumsub verification results arrive by signed webhook. Manual approval or failure is not available for this record.');
     }
     if (status === 'VERIFIED' && actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
       throw new AppError(403, 'FORBIDDEN', 'Only an admin can mark a manual verification complete');
