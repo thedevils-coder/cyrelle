@@ -1,0 +1,121 @@
+diff --git a/node_modules/@react-navigation/core/lib/module/getPathFromState.js b/node_modules/@react-navigation/core/lib/module/getPathFromState.js
+index 2f35e8c..0a8e96d 100644
+--- a/node_modules/@react-navigation/core/lib/module/getPathFromState.js
++++ b/node_modules/@react-navigation/core/lib/module/getPathFromState.js
+@@ -2,8 +2,41 @@
+ 
+ import { getPatternParts } from "./getPatternParts.js";
+ import { getStateFromRouteParams } from "./getStateFromRouteParams.js";
+-import * as queryString from "./queryString.js";
+ import { validatePathConfig } from "./validatePathConfig.js";
++// Cyrelle: do not import * queryString. Metro/Hermes can expose a namespace
++// whose stringify property is undefined, which crashes BaseNavigationContainer.
++function stringifyQuery(params) {
++  if (!params) {
++    return "";
++  }
++  const encode = value => {
++    const string = String(value);
++    if (/^[A-Za-z0-9_.~-]*$/.test(string)) {
++      return string;
++    }
++    return encodeURIComponent(string).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
++  };
++  const parts = [];
++  for (const [key, value] of Object.entries(params)) {
++    if (Array.isArray(value)) {
++      let encodedKey;
++      value.forEach(item => {
++        encodedKey ??= encode(key);
++        parts.push(`${encodedKey}=${encode(item)}`);
++      });
++      continue;
++    }
++    const encodedKey = encode(key);
++    if (value === null) {
++      if (encodedKey) {
++        parts.push(encodedKey);
++      }
++    } else if (value !== undefined) {
++      parts.push(`${encodedKey}=${encode(value)}`);
++    }
++  }
++  return parts.join("&");
++}
+ const serializeParamValue = value => value === null ? null : Array.isArray(value) ? value.map(String) : String(value);
+ const getActiveRoute = (state, configs, getRouteState) => {
+   const route = typeof state.index === 'number' ? state.routes[state.index] : state.routes[state.routes.length - 1];
+@@ -204,7 +237,7 @@ export function getPathFromState(state, options) {
+           delete focusedParams[param];
+         }
+       }
+-      const query = queryString.stringify(focusedParams);
++      const query = stringifyQuery(focusedParams);
+       if (query) {
+         path += `?${query}`;
+       }
+diff --git a/node_modules/@react-navigation/core/lib/module/getStateFromPath.js b/node_modules/@react-navigation/core/lib/module/getStateFromPath.js
+index 9b12a90..5698120 100644
+--- a/node_modules/@react-navigation/core/lib/module/getStateFromPath.js
++++ b/node_modules/@react-navigation/core/lib/module/getStateFromPath.js
+@@ -5,8 +5,50 @@ import { arrayStartsWith } from "./arrayStartsWith.js";
+ import { findFocusedRoute } from "./findFocusedRoute.js";
+ import { getPatternParts } from "./getPatternParts.js";
+ import { isArrayEqual } from "./isArrayEqual.js";
+-import * as queryString from "./queryString.js";
+ import { validatePathConfig } from "./validatePathConfig.js";
++// Cyrelle: avoid import * of ./queryString.js. The same Metro namespace bug
++// that drops stringify also drops parse.
++function parseQuery(query) {
++  const params = Object.create(null);
++  if (typeof query !== "string" || query.length === 0) {
++    return params;
++  }
++  const encodedUtf8 = /%(?:[0-7][\dA-F]|C[2-9A-F]%[89AB][\dA-F]|D[\dA-F]%[89AB][\dA-F]|E0%[AB][\dA-F]%[89AB][\dA-F]|E[1-9A-CEF](?:%[89AB][\dA-F]){2}|ED%[89][\dA-F]%[89AB][\dA-F]|F0%[9AB][\dA-F](?:%[89AB][\dA-F]){2}|F[1-3](?:%[89AB][\dA-F]){3}|F4%8[\dA-F](?:%[89AB][\dA-F]){2})/gi;
++  const decode = value => {
++    if (!value.includes("%")) {
++      return value;
++    }
++    try {
++      return decodeURIComponent(value);
++    } catch {
++      return value.replace(encodedUtf8, sequence => decodeURIComponent(sequence));
++    }
++  };
++  query = query.trim().replace(/^[?#&]/, "");
++  let start = 0;
++  while (start < query.length) {
++    if (query[start] === "&") {
++      start++;
++      continue;
++    }
++    const end = query.indexOf("&", start);
++    const index = end === -1 ? query.length : end;
++    const part = query.slice(start, index).replace(/\+/g, " ");
++    const separator = part.indexOf("=");
++    const key = decode(separator === -1 ? part : part.slice(0, separator));
++    const value = separator === -1 ? null : decode(part.slice(separator + 1));
++    const previous = params[key];
++    if (previous === undefined) {
++      params[key] = value;
++    } else if (Array.isArray(previous)) {
++      previous.push(value);
++    } else {
++      params[key] = [previous, value];
++    }
++    start = index + 1;
++  }
++  return params;
++}
+ const NESTED_SCREEN_PARAM_NAMES = ['screen', 'params', 'initial', 'path', 'merge', 'pop'];
+ const getStaticSegmentPattern = segment => Array.from(segment, char => {
+   const encoded = encodeURIComponent(char);
+@@ -583,7 +625,7 @@ const createNestedStateObject = (path, routes, initialRoutes, routeConfig) => {
+ const parseQueryParams = (path, parseConfig, pathParamNames = new Set(), explicitParamNames, hasNestedScreens = false, routeParams) => {
+   const queryIndex = path.indexOf('?');
+   const query = queryIndex === -1 ? undefined : path.slice(queryIndex + 1);
+-  const params = query ? queryString.parse(query) : {};
++  const params = query ? parseQuery(query) : {};
+   for (const name of pathParamNames) {
+     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+     delete params[name];

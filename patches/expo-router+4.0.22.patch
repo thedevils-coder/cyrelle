@@ -1,0 +1,147 @@
+diff --git a/node_modules/expo-router/build/fork/getPathFromState.js b/node_modules/expo-router/build/fork/getPathFromState.js
+--- a/node_modules/expo-router/build/fork/getPathFromState.js
++++ b/node_modules/expo-router/build/fork/getPathFromState.js
+@@ -24,7 +24,35 @@
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.appendBaseUrl = exports.getPathDataFromState = exports.getPathFromState = void 0;
+-const queryString = __importStar(require("query-string"));
++function stringifyParams(object, options) {
++    if (!object) {
++        return "";
++    }
++    var encode = function (value) {
++        return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
++            return "%" + char.charCodeAt(0).toString(16).toUpperCase();
++        });
++    };
++    var keys = Object.keys(object);
++    if (!options || options.sort !== false) {
++        keys.sort(options && typeof options.sort === "function" ? options.sort : undefined);
++    }
++    return keys.map(function (key) {
++        var value = object[key];
++        if (value === undefined) {
++            return "";
++        }
++        if (value === null) {
++            return encode(key);
++        }
++        if (Array.isArray(value)) {
++            return value.filter(function (item) { return item !== undefined; }).map(function (item) {
++                return item === null ? encode(key) : encode(key) + "=" + encode(item);
++            }).join("&");
++        }
++        return encode(key) + "=" + encode(value);
++    }).filter(function (part) { return part.length > 0; }).join("&");
++}
+ const expo = __importStar(require("./getPathFromState-forks"));
+ // END FORK
+ const getActiveRoute = (state) => {
+@@ -259,7 +287,7 @@
+             // START FORK
+             delete focusedParams['#'];
+             // END FORK
+-            const query = queryString.stringify(focusedParams, { sort: false });
++            const query = stringifyParams(focusedParams, { sort: false });
+             if (query) {
+                 path += `?${query}`;
+             }
+diff --git a/node_modules/expo-router/build/fork/getPathFromState-forks.js b/node_modules/expo-router/build/fork/getPathFromState-forks.js
+--- a/node_modules/expo-router/build/fork/getPathFromState-forks.js
++++ b/node_modules/expo-router/build/fork/getPathFromState-forks.js
+@@ -25,7 +25,35 @@
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.isDynamicPart = exports.getParamName = exports.getPathWithConventionsCollapsed = exports.appendBaseUrl = exports.appendQueryAndHash = exports.fixCurrentParams = exports.validatePathConfig = void 0;
+ const native_1 = require("@react-navigation/native");
+-const queryString = __importStar(require("query-string"));
++function stringifyParams(object, options) {
++    if (!object) {
++        return "";
++    }
++    var encode = function (value) {
++        return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
++            return "%" + char.charCodeAt(0).toString(16).toUpperCase();
++        });
++    };
++    var keys = Object.keys(object);
++    if (!options || options.sort !== false) {
++        keys.sort(options && typeof options.sort === "function" ? options.sort : undefined);
++    }
++    return keys.map(function (key) {
++        var value = object[key];
++        if (value === undefined) {
++            return "";
++        }
++        if (value === null) {
++            return encode(key);
++        }
++        if (Array.isArray(value)) {
++            return value.filter(function (item) { return item !== undefined; }).map(function (item) {
++                return item === null ? encode(key) : encode(key) + "=" + encode(item);
++            }).join("&");
++        }
++        return encode(key) + "=" + encode(value);
++    }).filter(function (part) { return part.length > 0; }).join("&");
++}
+ const matchers_1 = require("../matchers");
+ function validatePathConfig({ preserveDynamicRoutes, preserveGroups, shouldEncodeURISegment, ...options }) {
+     (0, native_1.validatePathConfig)(options);
+@@ -54,7 +82,7 @@
+ }
+ exports.fixCurrentParams = fixCurrentParams;
+ function appendQueryAndHash(path, { '#': hash, ...focusedParams }) {
+-    const query = queryString.stringify(focusedParams, { sort: false });
++    const query = stringifyParams(focusedParams, { sort: false });
+     if (query) {
+         path += `?${query}`;
+     }
+diff --git a/node_modules/expo-router/build/global-state/routeInfo.js b/node_modules/expo-router/build/global-state/routeInfo.js
+--- a/node_modules/expo-router/build/global-state/routeInfo.js
++++ b/node_modules/expo-router/build/global-state/routeInfo.js
+@@ -24,7 +24,35 @@
+ };
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.reconstructState = void 0;
+-const queryString = __importStar(require("query-string"));
++function stringifyParams(object, options) {
++    if (!object) {
++        return "";
++    }
++    var encode = function (value) {
++        return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
++            return "%" + char.charCodeAt(0).toString(16).toUpperCase();
++        });
++    };
++    var keys = Object.keys(object);
++    if (!options || options.sort !== false) {
++        keys.sort(options && typeof options.sort === "function" ? options.sort : undefined);
++    }
++    return keys.map(function (key) {
++        var value = object[key];
++        if (value === undefined) {
++            return "";
++        }
++        if (value === null) {
++            return encode(key);
++        }
++        if (Array.isArray(value)) {
++            return value.filter(function (item) { return item !== undefined; }).map(function (item) {
++                return item === null ? encode(key) : encode(key) + "=" + encode(item);
++            }).join("&");
++        }
++        return encode(key) + "=" + encode(value);
++    }).filter(function (part) { return part.length > 0; }).join("&");
++}
+ function reconstructState(state, getState, options) {
+     const segments = [];
+     const allParams = {};
+@@ -47,7 +75,7 @@
+         segments.pop();
+     }
+     let path = `/${segments.filter(Boolean).join('/')}`;
+-    const query = queryString.stringify(allParams, { sort: false });
++    const query = stringifyParams(allParams, { sort: false });
+     if (query) {
+         path += `?${query}`;
+     }
