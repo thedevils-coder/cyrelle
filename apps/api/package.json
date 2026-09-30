@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "nest start --watch",
+    "prebuild": "prisma generate",
     "build": "nest build",
     "start": "node dist/main.js",
     "start:worker": "node dist/worker.js",
+    "prelint": "prisma generate",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "pretest": "prisma generate",
     "test": "jest --runInBand --forceExit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
