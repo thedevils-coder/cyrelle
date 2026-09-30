@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import { Image, Text } from 'react-native';
+import { Image } from 'react-native';
 import { router } from 'expo-router';
 import { token } from '../src/api';
+import { hideLaunchSplash } from '../src/launch-splash';
 import { Button, Muted, Screen, Title } from '../src/ui';
 
 export default function Welcome() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    token().then((value) => {
-      if (value) router.replace('/(tabs)/home');
-      setReady(true);
-    });
+    token()
+      .then((value) => {
+        if (value) router.replace('/(tabs)/home');
+        setReady(true);
+      })
+      .finally(hideLaunchSplash);
   }, []);
-  if (!ready) return <Screen><Muted>Loading</Muted></Screen>;
+  if (!ready) return null;
   return (
     <Screen>
       <Image source={require('../assets/logo.jpg')} style={{ width: 220, height: 280, alignSelf: 'center', borderRadius: 28 }} accessibilityLabel="Cyrelle" />

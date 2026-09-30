@@ -8,8 +8,17 @@
     "icon": "./assets/logo.jpg",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
-    "splash": { "image": "./assets/cyrelle-splash-logo.png", "resizeMode": "cover", "backgroundColor": "#070708" },
+    "splash": {
+      "image": "./assets/cyrelle-splash-logo.jpg",
+      "resizeMode": "cover",
+      "backgroundColor": "#070708"
+    },
     "ios": {
+      "splash": {
+        "image": "./assets/cyrelle-splash-logo.jpg",
+        "resizeMode": "cover",
+        "backgroundColor": "#070708"
+      },
       "supportsTablet": true,
       "bundleIdentifier": "app.cyrelle.mobile",
       "infoPlist": {
@@ -20,6 +29,11 @@
       }
     },
     "android": {
+      "splash": {
+        "image": "./assets/cyrelle-splash-logo.jpg",
+        "resizeMode": "cover",
+        "backgroundColor": "#070708"
+      },
       "package": "app.cyrelle.mobile",
       "permissions": ["CAMERA", "RECORD_AUDIO", "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "POST_NOTIFICATIONS"]
     },

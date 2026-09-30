@@ -17,9 +17,13 @@
     "dev:api": "npm run dev --workspace @cyrelle/api",
     "dev:web": "npm run dev --workspace @cyrelle/web",
     "dev:admin": "npm run dev --workspace @cyrelle/admin",
-    "dev:mobile": "npm run start --workspace @cyrelle/mobile"
+    "dev:mobile": "npm run start --workspace @cyrelle/mobile",
+    "postinstall": "patch-package"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "patch-package": "^8.0.1"
   }
 }
