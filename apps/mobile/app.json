@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Cyrelle",
+    "slug": "cyrelle",
+    "scheme": "cyrelle",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.jpg",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "splash": { "image": "./assets/logo.jpg", "resizeMode": "contain", "backgroundColor": "#070708" },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.cyrelle.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Cyrelle uses the camera for posts, stories, reels, live video, and identity verification selfies.",
+        "NSMicrophoneUsageDescription": "Cyrelle uses the microphone for reels, live audio, and optional emergency voice messages.",
+        "NSPhotoLibraryUsageDescription": "Cyrelle uses your photo library when you choose images or videos to post.",
+        "NSLocationWhenInUseUsageDescription": "Cyrelle uses your location only when you choose to share it in an emergency or attach a place to a post."
+      }
+    },
+    "android": {
+      "package": "app.cyrelle.mobile",
+      "permissions": ["CAMERA", "RECORD_AUDIO", "ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION", "POST_NOTIFICATIONS"]
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": { "typedRoutes": false },
+    "extra": { "apiUrl": "http://localhost:4000" }
+  }
+}

@@ -1,0 +1,38 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cyrelle
+          POSTGRES_PASSWORD: cyrelle
+          POSTGRES_DB: cyrelle_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cyrelle"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql://cyrelle:cyrelle@localhost:5432/cyrelle_test
+      ENABLE_QUEUES: "false"
+      JWT_ACCESS_SECRET: ci-access-secret
+      VERIFICATION_ENCRYPTION_KEY: 4d6c382eba44def051985fd62bb3307883a973aedd78d54e42b65f2d21552e19
+      PAYMENT_PROVIDER: test
+      ALLOW_DEV_GOOGLE: "true"
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build --workspace @cyrelle/web
+      - run: npm run build --workspace @cyrelle/admin
