@@ -88,7 +88,9 @@ SOS notifies emergency contacts and stores a timestamped event. Official numbers
 
 ## Identity
 
-Verification documents are encrypted with AES-256-GCM. Public APIs return status only. Opening a document is limited to a super admin and is written to the audit log.
+Identity checks use Sumsub when `SUMSUB_APP_TOKEN` and `SUMSUB_SECRET_KEY` are set. Cyrelle stores the result and the Sumsub applicant reference. It does not store government ID images, selfies, or biometric templates. The mobile app opens Sumsub WebSDK. A signed webhook is the only authoritative result. Premium Blue Tick requires an active Premium subscription and status `VERIFIED`. See `docs/sumsub-setup.md` and `docs/identity-verification-architecture.md`.
+
+Without Sumsub credentials the rest of Cyrelle still runs. Starting verification returns a user-facing unavailable message. Sandbox and production both use `https://api.sumsub.com`; the app token selects the Sumsub environment.
 
 ## Tests
 

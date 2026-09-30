@@ -21,7 +21,7 @@ There is no universal 18+ gate. If a country configuration sets a minimum age, t
 
 ## Permissions
 
-- Camera: posts, stories, reels, live, and verification selfies.
+- Camera: posts, stories, reels, live, and the identity provider's verification flow when a selfie or liveness step is configured. Cyrelle does not store government ID or selfie images. Sumsub processes those checks. Cyrelle cannot silently place emergency calls or send SMS.
 - Microphone: reels, live, and optional emergency voice messages.
 - Photos: only when the member picks media to post.
 - Location: only when the member shares a place or an emergency location.

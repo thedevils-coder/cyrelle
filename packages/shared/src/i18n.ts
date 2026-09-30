@@ -134,6 +134,8 @@ const en = {
   premiumSummary: 'Blue Tick after verification, enhanced AI, advanced analytics, and early access.',
   standardBusinessSummary: 'Profile, services, appointments, content, and standard analytics. No subscription required.',
   blueTickSummary: 'Optional verified badge, advanced analytics, and enhanced discovery.',
+  verifyIdentityTitle: 'Verify your identity',
+  verifyIdentityBody: 'Cyrelle uses identity verification to help maintain a safe women-only community.',
 };
 
 export type MessageKey = keyof typeof en;

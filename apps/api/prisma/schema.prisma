@@ -41,10 +41,14 @@ enum BusinessMemberRole {
 enum VerificationStatus {
   NOT_STARTED
   PENDING
+  IN_PROGRESS
+  SUBMITTED
   VERIFIED
   FAILED
   MANUAL_REVIEW
   RESTRICTED
+  EXPIRED
+  CANCELLED
 }
 
 enum BusinessVerificationStatus {
@@ -335,22 +339,58 @@ model UserVerification {
   status               VerificationStatus @default(NOT_STARTED)
   provider             String             @default("manual")
   providerRef          String?
+  providerApplicantId  String?            @unique
+  providerInspectionId String?
+  /// Cyrelle user id sent to the provider as externalUserId. Not a document number.
+  externalUserId       String?            @unique
+  verificationType     String             @default("identity")
   documentType         String?
   documentCountry      String?
-  /// Encrypted storage key. Never returned by public APIs.
+  /// Legacy ciphertext only. New Sumsub checks do not write document or selfie bytes.
   documentCipher       String?
   selfieCipher         String?
   livenessScore        Float?
+  failureReason        String?
+  reviewReason         String?
+  retryCount           Int                @default(0)
+  canRetry             Boolean            @default(true)
   independentBlueTick  Boolean            @default(false)
   reviewerId           String?
   reviewNote           String?
+  startedAt            DateTime?
   submittedAt          DateTime?
+  verifiedAt           DateTime?
+  failedAt             DateTime?
   reviewedAt           DateTime?
+  lastProviderEventAt  DateTime?
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events               IdentityVerificationEvent[]
 
   @@index([status])
+  @@index([provider, status])
+}
+
+/// Safe webhook and attempt references. Never store document images, numbers, or biometrics.
+model IdentityVerificationEvent {
+  id               String              @id @default(cuid())
+  provider         String
+  eventId          String
+  eventType        String
+  userId           String?
+  verificationId   String?
+  mappedStatus     VerificationStatus?
+  reviewAnswer     String?
+  reviewRejectType String?
+  sandboxMode      Boolean             @default(false)
+  applied          Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+  verification     UserVerification?   @relation(fields: [verificationId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, eventId])
+  @@index([userId, createdAt])
+  @@index([verificationId])
 }
 
 model RefreshSession {

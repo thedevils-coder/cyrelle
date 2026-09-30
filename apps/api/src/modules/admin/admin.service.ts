@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import { AccountStatus, Role, SubscriptionStatus } from '@prisma/client';
+import { AccountStatus, Role, SubscriptionStatus, VerificationStatus } from '@prisma/client';
 import { AppError } from '../../common/app-error';
 import { AuthUser } from '../../common/auth.guard';
-import { decryptString } from '../../common/crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { verificationUserMessage } from '../verification/sumsub/status-map';
 
 @Injectable()
 export class AdminService {
@@ -48,28 +48,126 @@ export class AdminService {
     return { id: user.id, status: user.accountStatus };
   }
 
-  verifications() {
+  verifications(status?: string) {
+    const allowed = new Set<string>(Object.values(VerificationStatus));
+    const where = status && allowed.has(status) ? { status: status as VerificationStatus } : undefined;
     return this.prisma.userVerification.findMany({
-      where: { status: { in: ['PENDING', 'MANUAL_REVIEW'] } },
+      where,
       include: { user: { include: { profile: true } } },
-      orderBy: { submittedAt: 'asc' },
-    }).then((rows) => rows.map((row) => ({ id: row.id, userId: row.userId, username: row.user.profile?.username, status: row.status, documentType: row.documentType, documentCountry: row.documentCountry, submittedAt: row.submittedAt, hasDocument: Boolean(row.documentCipher) })));
+      orderBy: { updatedAt: 'desc' },
+      take: 100,
+    }).then((rows) => rows.map((row) => this.safeVerification(row)));
+  }
+
+  async verificationDetail(id: string) {
+    const row = await this.prisma.userVerification.findUnique({ where: { id }, include: { user: { include: { profile: true } } } });
+    if (!row) throw new AppError(404, 'NOT_FOUND', 'Verification record not found');
+    const [events, audits] = await Promise.all([
+      this.prisma.identityVerificationEvent.findMany({ where: { verificationId: id }, orderBy: { createdAt: 'desc' }, take: 50 }),
+      this.prisma.auditLog.findMany({
+        where: { target: id, action: { in: ['IDENTITY_VERIFICATION_STARTED', 'IDENTITY_VERIFICATION_SUBMITTED', 'IDENTITY_VERIFICATION_VERIFIED', 'IDENTITY_VERIFICATION_FAILED', 'IDENTITY_VERIFICATION_MANUAL_REVIEW', 'IDENTITY_VERIFICATION_RESTRICTED', 'IDENTITY_VERIFICATION_RETRY', 'SUMSUB_WEBHOOK_RECEIVED', 'SUMSUB_WEBHOOK_REJECTED', 'verification.decision', 'verification.document_access_denied'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+    ]);
+    return {
+      verification: this.safeVerification(row),
+      events: events.map((event) => ({
+        id: event.id,
+        eventType: event.eventType,
+        status: event.mappedStatus,
+        reviewAnswer: event.reviewAnswer,
+        reviewRejectType: event.reviewRejectType,
+        sandboxMode: event.sandboxMode,
+        applied: event.applied,
+        createdAt: event.createdAt,
+      })),
+      audits: audits.map((entry) => ({ id: entry.id, action: entry.action, createdAt: entry.createdAt, metadata: entry.metadata })),
+    };
   }
 
   async decideVerification(actor: AuthUser, id: string, status: 'VERIFIED' | 'FAILED' | 'MANUAL_REVIEW' | 'RESTRICTED', note?: string) {
-    const row = await this.prisma.userVerification.update({ where: { id }, data: { status, reviewNote: note, reviewerId: actor.id, reviewedAt: new Date() } });
-    await this.prisma.notification.create({ data: { userId: row.userId, kind: 'VERIFICATION', title: 'Verification update', body: `Your identity verification is ${status.toLowerCase().replace('_', ' ')}.` } });
-    await this.audit(actor, 'verification.decision', id, { status });
+    const current = await this.prisma.userVerification.findUnique({ where: { id } });
+    if (!current) throw new AppError(404, 'NOT_FOUND', 'Verification record not found');
+    if (status === 'VERIFIED' && current.provider === 'sumsub') {
+      throw new AppError(403, 'PROVIDER_AUTHORITATIVE', 'Sumsub verification results arrive by signed webhook. Manual approval is not available for this record.');
+    }
+    if (status === 'VERIFIED' && actor.role !== Role.ADMIN && actor.role !== Role.SUPER_ADMIN) {
+      throw new AppError(403, 'FORBIDDEN', 'Only an admin can mark a manual verification complete');
+    }
+    const row = await this.prisma.userVerification.update({
+      where: { id },
+      data: {
+        status,
+        reviewNote: note,
+        reviewReason: status === 'MANUAL_REVIEW' ? note ?? current.reviewReason : current.reviewReason,
+        reviewerId: actor.id,
+        reviewedAt: new Date(),
+        verifiedAt: status === 'VERIFIED' ? new Date() : status === 'FAILED' || status === 'RESTRICTED' ? null : current.verifiedAt,
+        failedAt: status === 'FAILED' || status === 'RESTRICTED' ? new Date() : current.failedAt,
+        canRetry: status === 'FAILED',
+      },
+    });
+    const notice = verificationUserMessage(status);
+    if (notice) {
+      await this.prisma.notification.create({ data: { userId: row.userId, kind: 'VERIFICATION', title: notice.title, body: notice.body } });
+    }
+    const action = status === 'MANUAL_REVIEW' ? 'IDENTITY_VERIFICATION_MANUAL_REVIEW' : status === 'RESTRICTED' ? 'IDENTITY_VERIFICATION_RESTRICTED' : status === 'FAILED' ? 'IDENTITY_VERIFICATION_FAILED' : 'IDENTITY_VERIFICATION_VERIFIED';
+    await this.audit(actor, action, id, { status, provider: row.provider });
     return { id: row.id, status: row.status };
   }
 
   async revealDocument(actor: AuthUser, id: string) {
-    if (actor.role !== Role.SUPER_ADMIN) throw new AppError(403, 'FORBIDDEN', 'Only a super admin can open verification documents');
-    const row = await this.prisma.userVerification.findUnique({ where: { id } });
-    if (!row?.documentCipher) throw new AppError(404, 'NOT_FOUND', 'No document is stored');
-    const key = process.env.VERIFICATION_ENCRYPTION_KEY || '';
-    await this.audit(actor, 'verification.document_view', id, {});
-    return { document: decryptString(row.documentCipher, key), selfie: row.selfieCipher ? decryptString(row.selfieCipher, key) : null };
+    await this.audit(actor, 'verification.document_access_denied', id, { role: actor.role });
+    throw new AppError(403, 'DOCUMENTS_NOT_STORED', 'Identity documents are not available in Cyrelle. Review them in the verification provider console if your provider role allows it.');
+  }
+
+  private safeVerification(row: {
+    id: string;
+    userId: string;
+    status: VerificationStatus;
+    provider: string;
+    providerApplicantId: string | null;
+    providerInspectionId: string | null;
+    verificationType: string;
+    documentType: string | null;
+    documentCountry: string | null;
+    failureReason: string | null;
+    reviewReason: string | null;
+    reviewNote: string | null;
+    retryCount: number;
+    canRetry: boolean;
+    startedAt: Date | null;
+    submittedAt: Date | null;
+    verifiedAt: Date | null;
+    failedAt: Date | null;
+    createdAt: Date;
+    updatedAt: Date;
+    user?: { profile?: { username?: string | null } | null };
+  }) {
+    return {
+      id: row.id,
+      userId: row.userId,
+      username: row.user?.profile?.username ?? null,
+      status: row.status,
+      provider: row.provider,
+      providerApplicantId: row.providerApplicantId,
+      providerInspectionId: row.providerInspectionId,
+      verificationType: row.verificationType,
+      documentType: row.documentType,
+      country: row.documentCountry,
+      failureReason: row.failureReason,
+      reviewReason: row.reviewReason,
+      reviewNote: row.reviewNote,
+      retryCount: row.retryCount,
+      canRetry: row.canRetry,
+      startedAt: row.startedAt,
+      submittedAt: row.submittedAt,
+      verifiedAt: row.verifiedAt,
+      failedAt: row.failedAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    };
   }
 
   content() {

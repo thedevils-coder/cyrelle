@@ -13,6 +13,14 @@ process.env.PAYMENT_PROVIDER = 'test';
 process.env.ALLOW_DEV_GOOGLE = 'true';
 process.env.WEBHOOK_SECRET = 'test-webhook';
 process.env.WEB_ORIGIN = 'http://localhost:5173';
+process.env.SUMSUB_ENVIRONMENT = 'sandbox';
+process.env.SUMSUB_APP_TOKEN = 'sandbox-app-token';
+process.env.SUMSUB_SECRET_KEY = 'sandbox-secret-key';
+process.env.SUMSUB_WEBHOOK_SECRET = 'sandbox-webhook-secret';
+process.env.SUMSUB_BASE_URL = 'https://api.sumsub.com';
+process.env.SUMSUB_LEVEL_NAME = 'basic-kyc-level';
+process.env.SUMSUB_TOKEN_TTL_SECS = '600';
+process.env.IDENTITY_VERIFICATION_MAX_RETRIES = '2';
 
 execSync('npx prisma migrate deploy', {
   cwd: join(__dirname, '..'),

@@ -55,7 +55,7 @@ export function App() {
         {error && <p>{error}</p>}
         {section === 'overview' && <Overview data={data} />}
         {section === 'users' && <Users data={data} token={token} reload={() => load()} />}
-        {section === 'verifications' && <Verifications data={data} token={token} reload={() => load()} />}
+        {section === 'verifications' && <Verifications token={token} reload={() => load()} />}
         {section === 'commissions' && <Commissions data={data} />}
         {section === 'flags' && <Flags data={data} token={token} reload={() => load()} />}
         {section === 'ads' && <Ads data={data} token={token} reload={() => load()} />}
@@ -132,21 +132,69 @@ function Users({ data, token, reload }: { data: unknown; token: string; reload: 
   );
 }
 
-function Verifications({ data, token, reload }: { data: unknown; token: string; reload: () => void }) {
-  const rows = Array.isArray(data) ? data as Array<{ id: string; username?: string; status: string }> : [];
-  if (!rows.length) return <p className="muted">No identity reviews waiting. Seeded members are already verified, and their documents are not shown here.</p>;
+const verificationFilters = ['', 'PENDING', 'IN_PROGRESS', 'SUBMITTED', 'VERIFIED', 'FAILED', 'MANUAL_REVIEW', 'RESTRICTED'] as const;
+
+function Verifications({ token, reload }: { token: string; reload: () => void }) {
+  const [filter, setFilter] = useState<(typeof verificationFilters)[number]>('');
+  const [rows, setRows] = useState<Array<{ id: string; userId: string; username?: string | null; status: string; provider: string; providerApplicantId?: string | null; failureReason?: string | null; reviewReason?: string | null; updatedAt?: string }>>([]);
+  const [detail, setDetail] = useState<string>('');
+
+  async function loadRows(next = filter) {
+    const query = next ? `?status=${next}` : '';
+    const response = await fetch(`${API}/v1/admin/verifications${query}`, { headers: { Authorization: `Bearer ${token}` } });
+    const body = await response.json();
+    if (response.ok) setRows(body);
+  }
+
+  useEffect(() => { loadRows().catch(() => setRows([])); }, [filter, token]);
+
+  async function decide(id: string, status: 'MANUAL_REVIEW' | 'RESTRICTED' | 'FAILED' | 'VERIFIED') {
+    await fetch(`${API}/v1/admin/verifications/${id}/decision`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    await loadRows();
+    reload();
+  }
+
+  async function history(id: string) {
+    const response = await fetch(`${API}/v1/admin/verifications/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+    const body = await response.json();
+    setDetail(JSON.stringify(body, null, 2));
+  }
+
   return (
-    <table>
-      <tbody>
-        {rows.map((row) => (
-          <tr key={row.id}>
-            <td>@{row.username}</td>
-            <td>{row.status}</td>
-            <td><button className="primary" onClick={async () => { await fetch(`${API}/v1/admin/verifications/${row.id}/decision`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'VERIFIED' }) }); reload(); }}>Verify</button></td>
-          </tr>
+    <>
+      <p className="muted">Identity documents stay with the verification provider. This list shows status, provider reference, and safe review reasons only.</p>
+      <div className="row">
+        {verificationFilters.map((item) => (
+          <button key={item || 'all'} className={item === filter ? 'primary' : ''} onClick={() => setFilter(item)}>{item || 'All'}</button>
         ))}
-      </tbody>
-    </table>
+      </div>
+      {!rows.length && <p className="muted">No verification records for this filter.</p>}
+      <table>
+        <thead><tr><th>Member</th><th>Status</th><th>Provider</th><th>Reference</th><th>Reason</th><th></th></tr></thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td>@{row.username || row.userId}</td>
+              <td>{row.status}</td>
+              <td>{row.provider}</td>
+              <td>{row.providerApplicantId || '—'}</td>
+              <td>{row.failureReason || row.reviewReason || '—'}</td>
+              <td className="row">
+                <button onClick={() => history(row.id)}>History</button>
+                <button onClick={() => decide(row.id, 'MANUAL_REVIEW')}>Manual review</button>
+                <button onClick={() => decide(row.id, 'RESTRICTED')}>Restrict</button>
+                {row.provider !== 'sumsub' && row.status !== 'VERIFIED' && <button className="primary" onClick={() => decide(row.id, 'VERIFIED')}>Verify</button>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {detail && <pre>{detail}</pre>}
+    </>
   );
 }
 

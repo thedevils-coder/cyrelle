@@ -13,7 +13,8 @@ export class AdminController {
   @Get('overview') overview() { return this.admin.overview(); }
   @Get('users') users(@Query('q') q?: string) { return this.admin.users(q); }
   @Patch('users/:id') setUser(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() body: { status: AccountStatus }) { return this.admin.setUserStatus(actor, id, body.status); }
-  @Get('verifications') verifications() { return this.admin.verifications(); }
+  @Get('verifications') verifications(@Query('status') status?: string) { return this.admin.verifications(status); }
+  @Get('verifications/:id') verification(@Param('id') id: string) { return this.admin.verificationDetail(id); }
   @Post('verifications/:id/decision') decide(@CurrentUser() actor: AuthUser, @Param('id') id: string, @Body() body: { status: 'VERIFIED' | 'FAILED' | 'MANUAL_REVIEW' | 'RESTRICTED'; note?: string }) { return this.admin.decideVerification(actor, id, body.status, body.note); }
   @Post('verifications/:id/document') document(@CurrentUser() actor: AuthUser, @Param('id') id: string) { return this.admin.revealDocument(actor, id); }
   @Get('content') content() { return this.admin.content(); }

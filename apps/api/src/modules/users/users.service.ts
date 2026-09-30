@@ -6,6 +6,7 @@ import { AuthUser } from '../../common/auth.guard';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EntitlementsService } from '../entitlements/entitlements.service';
 import { MailService } from '../mail/mail.service';
+import { IdentityVerificationService } from '../verification/identity-verification.service';
 
 @Injectable()
 export class UsersService {
@@ -13,6 +14,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementsService,
     private readonly mail: MailService,
+    private readonly identity: IdentityVerificationService,
   ) {}
 
   async me(user: AuthUser) {
@@ -225,6 +227,7 @@ export class UsersService {
 
   async deleteAccount(user: AuthUser) {
     const stamp = `deleted_${user.id.slice(-8)}`;
+    const providerRelease = await this.identity.releaseProviderApplicant(user.id);
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id: user.id },
@@ -243,9 +246,24 @@ export class UsersService {
         where: { userId: user.id },
         data: { displayName: 'Deleted member', username: stamp, bio: null, avatarUrl: null, city: null, website: null, interests: [], dateOfBirth: null },
       }),
-      this.prisma.userVerification.update({
+      this.prisma.userVerification.updateMany({
         where: { userId: user.id },
-        data: { documentCipher: null, selfieCipher: null, documentType: null, providerRef: null, reviewNote: null },
+        data: {
+          status: 'CANCELLED',
+          documentCipher: null,
+          selfieCipher: null,
+          documentType: null,
+          documentCountry: null,
+          providerRef: null,
+          providerApplicantId: null,
+          providerInspectionId: null,
+          externalUserId: null,
+          failureReason: null,
+          reviewReason: null,
+          reviewNote: null,
+          livenessScore: null,
+          canRetry: false,
+        },
       }),
       this.prisma.emergencyContact.deleteMany({ where: { userId: user.id } }),
       this.prisma.refreshSession.deleteMany({ where: { userId: user.id } }),
@@ -263,7 +281,9 @@ export class UsersService {
     }
     return {
       deleted: true,
-      retention: 'Transaction, appointment, and commission records may be retained where legally required. Verification documents are deleted now.',
+      retention: 'Transaction, appointment, and commission records may be retained where legally required. Cyrelle removes its verification references now. Permanent deletion of data held by the verification provider follows that provider’s process and is not completed by this request.',
+      providerDeactivated: providerRelease.deactivated,
+      providerDataDeleted: providerRelease.permanentDeletion,
     };
   }
 

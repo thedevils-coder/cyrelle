@@ -12,7 +12,7 @@ const pillars = [
 ];
 
 const faqs = [
-  ['Is Cyrelle only for women?', 'Yes. Identity verification supports eligibility. Documents stay private and never appear on a profile.'],
+  ['Is Cyrelle only for women?', 'Yes. Identity verification supports eligibility. Sumsub handles ID and selfie checks. Cyrelle stores the result, not the document images, and those documents never appear on a profile.'],
   ['Do I need a phone number?', 'No. You join with email or Google. A phone number is never used to register, sign in, or reset a password. Emergency contacts may optionally include a phone number.'],
   ['Is there an 18+ gate?', 'There is no universal 18+ registration gate. If a country sets a minimum age, only that country’s rule applies.'],
   ['Does Premium remove ads?', 'No. Cyrelle contains advertisements for Basic and Premium. Premium is not an ad-free plan.'],

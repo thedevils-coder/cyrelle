@@ -1,28 +1,20 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsNumber, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Controller, Get, Post } from '@nestjs/common';
+import { AppError } from '../../common/app-error';
 import { AuthUser } from '../../common/auth.guard';
 import { CurrentUser } from '../../common/decorators';
-import { VerificationService } from './verification.service';
-
-class VerificationDto {
-  @IsString() documentType!: string;
-  @IsString() documentCountry!: string;
-  @IsString() @MaxLength(200000) document!: string;
-  @IsString() @MaxLength(200000) selfie!: string;
-  @IsOptional() @IsNumber() livenessScore?: number;
-}
+import { IdentityVerificationService } from './identity-verification.service';
 
 @Controller('verification')
 export class VerificationController {
-  constructor(private readonly verification: VerificationService) {}
+  constructor(private readonly identity: IdentityVerificationService) {}
 
   @Get()
   status(@CurrentUser() user: AuthUser) {
-    return this.verification.status(user);
+    return this.identity.status(user);
   }
 
   @Post()
-  submit(@CurrentUser() user: AuthUser, @Body() body: VerificationDto) {
-    return this.verification.submit(user, body);
+  submit() {
+    throw new AppError(410, 'VERIFICATION_MOVED', 'Identity documents are not uploaded to Cyrelle. Start verification to continue with the identity provider.');
   }
 }
