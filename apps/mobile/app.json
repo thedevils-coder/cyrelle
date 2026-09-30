@@ -5,7 +5,7 @@
     "scheme": "cyrelle",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.jpg",
+    "icon": "./assets/cyrelle-splash-logo.jpg",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
     "splash": {

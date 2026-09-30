@@ -23,6 +23,9 @@
   "engines": {
     "node": ">=20"
   },
+  "overrides": {
+    "@react-navigation/core": "7.23.0"
+  },
   "devDependencies": {
     "patch-package": "^8.0.1"
   }
