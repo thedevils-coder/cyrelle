@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspace @cyrelle/shared && npm run build --workspace @cyrelle/api && npm run build --workspace @cyrelle/web && npm run build --workspace @cyrelle/admin",
-    "test": "npm run test --workspace @cyrelle/shared && npm run test --workspace @cyrelle/api",
+    "test": "npm run build --workspace @cyrelle/shared && npm run test --workspace @cyrelle/shared && npm run test --workspace @cyrelle/api",
     "lint": "npm run lint --workspace @cyrelle/shared && npm run lint --workspace @cyrelle/api && npm run lint --workspace @cyrelle/web && npm run lint --workspace @cyrelle/admin",
     "db:generate": "npm run db:generate --workspace @cyrelle/api",
     "db:migrate": "npm run db:migrate --workspace @cyrelle/api",
