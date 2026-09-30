@@ -1,73 +1,23 @@
-diff --git a/node_modules/expo-router/build/fork/getPathFromState-forks.js b/node_modules/expo-router/build/fork/getPathFromState-forks.js
-index c107da6..fd954f9 100644
---- a/node_modules/expo-router/build/fork/getPathFromState-forks.js
-+++ b/node_modules/expo-router/build/fork/getPathFromState-forks.js
-@@ -25,7 +25,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
- Object.defineProperty(exports, "__esModule", { value: true });
- exports.isDynamicPart = exports.getParamName = exports.getPathWithConventionsCollapsed = exports.appendBaseUrl = exports.appendQueryAndHash = exports.fixCurrentParams = exports.validatePathConfig = void 0;
- const native_1 = require("@react-navigation/native");
--const queryString = __importStar(require("query-string"));
-+const queryStringCompat = require("./queryStringCompat");
-+const queryString = queryStringCompat.resolveQueryString(queryStringCompat);
- const matchers_1 = require("../matchers");
- function validatePathConfig({ preserveDynamicRoutes, preserveGroups, shouldEncodeURISegment, ...options }) {
-     (0, native_1.validatePathConfig)(options);
 diff --git a/node_modules/expo-router/build/fork/getPathFromState.js b/node_modules/expo-router/build/fork/getPathFromState.js
-index b2c02bc..b409e4f 100644
 --- a/node_modules/expo-router/build/fork/getPathFromState.js
 +++ b/node_modules/expo-router/build/fork/getPathFromState.js
-@@ -24,7 +24,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
+@@ -24,7 +24,35 @@
  };
  Object.defineProperty(exports, "__esModule", { value: true });
  exports.appendBaseUrl = exports.getPathDataFromState = exports.getPathFromState = void 0;
 -const queryString = __importStar(require("query-string"));
-+const queryStringCompat = require("./queryStringCompat");
-+const queryString = queryStringCompat.resolveQueryString(queryStringCompat);
- const expo = __importStar(require("./getPathFromState-forks"));
- // END FORK
- const getActiveRoute = (state) => {
-diff --git a/node_modules/expo-router/build/fork/queryStringCompat.js b/node_modules/expo-router/build/fork/queryStringCompat.js
-new file mode 100644
-index 0000000..f25a456
---- /dev/null
-+++ b/node_modules/expo-router/build/fork/queryStringCompat.js
-@@ -0,0 +1,66 @@
-+"use strict";
-+
-+// Expo Router 4 calls queryString.stringify on an `import *` namespace.
-+// Metro's ESM interop can return { __esModule: true, default: { stringify } }
-+// with stringify undefined on the namespace, which crashes Android Expo Go.
-+// This file is plain CommonJS and is required directly, not via import-star.
-+
-+function strictUriEncode(value) {
-+    return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
-+        return "%" + char.charCodeAt(0).toString(16).toUpperCase();
-+    });
-+}
-+
-+function encode(value, options) {
-+    if (options.encode) {
-+        return options.strict ? strictUriEncode(value) : encodeURIComponent(value);
-+    }
-+    return value;
-+}
-+
-+function stringify(object, options) {
++function stringifyParams(object, options) {
 +    if (!object) {
 +        return "";
 +    }
-+    var settings = Object.assign({
-+        encode: true,
-+        strict: true,
-+        arrayFormat: "none",
-+        arrayFormatSeparator: ",",
-+        sort: true,
-+    }, options);
-+    var keys = Object.keys(object).filter(function (key) {
-+        return !(settings.skipNull && (object[key] === null || object[key] === undefined)) && !(settings.skipEmptyString && object[key] === "");
-+    });
-+    if (settings.sort !== false) {
-+        keys.sort(typeof settings.sort === "function" ? settings.sort : undefined);
++    var encode = function (value) {
++        return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
++            return "%" + char.charCodeAt(0).toString(16).toUpperCase();
++        });
++    };
++    var keys = Object.keys(object);
++    if (!options || options.sort !== false) {
++        keys.sort(options && typeof options.sort === "function" ? options.sort : undefined);
 +    }
 +    return keys.map(function (key) {
 +        var value = object[key];
@@ -75,40 +25,123 @@ index 0000000..f25a456
 +            return "";
 +        }
 +        if (value === null) {
-+            return encode(key, settings);
++            return encode(key);
 +        }
 +        if (Array.isArray(value)) {
 +            return value.filter(function (item) { return item !== undefined; }).map(function (item) {
-+                return item === null ? encode(key, settings) : encode(key, settings) + "=" + encode(item, settings);
++                return item === null ? encode(key) : encode(key) + "=" + encode(item);
 +            }).join("&");
 +        }
-+        return encode(key, settings) + "=" + encode(value, settings);
++        return encode(key) + "=" + encode(value);
 +    }).filter(function (part) { return part.length > 0; }).join("&");
 +}
-+
-+function resolveQueryString(mod) {
-+    if (mod && typeof mod.stringify === "function") {
-+        return mod;
+ const expo = __importStar(require("./getPathFromState-forks"));
+ // END FORK
+ const getActiveRoute = (state) => {
+@@ -259,7 +287,7 @@
+             // START FORK
+             delete focusedParams['#'];
+             // END FORK
+-            const query = queryString.stringify(focusedParams, { sort: false });
++            const query = stringifyParams(focusedParams, { sort: false });
+             if (query) {
+                 path += `?${query}`;
+             }
+diff --git a/node_modules/expo-router/build/fork/getPathFromState-forks.js b/node_modules/expo-router/build/fork/getPathFromState-forks.js
+--- a/node_modules/expo-router/build/fork/getPathFromState-forks.js
++++ b/node_modules/expo-router/build/fork/getPathFromState-forks.js
+@@ -25,7 +25,35 @@
+ Object.defineProperty(exports, "__esModule", { value: true });
+ exports.isDynamicPart = exports.getParamName = exports.getPathWithConventionsCollapsed = exports.appendBaseUrl = exports.appendQueryAndHash = exports.fixCurrentParams = exports.validatePathConfig = void 0;
+ const native_1 = require("@react-navigation/native");
+-const queryString = __importStar(require("query-string"));
++function stringifyParams(object, options) {
++    if (!object) {
++        return "";
 +    }
-+    if (mod && mod.default && typeof mod.default.stringify === "function") {
-+        return mod.default;
++    var encode = function (value) {
++        return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
++            return "%" + char.charCodeAt(0).toString(16).toUpperCase();
++        });
++    };
++    var keys = Object.keys(object);
++    if (!options || options.sort !== false) {
++        keys.sort(options && typeof options.sort === "function" ? options.sort : undefined);
 +    }
-+    return { stringify: stringify };
++    return keys.map(function (key) {
++        var value = object[key];
++        if (value === undefined) {
++            return "";
++        }
++        if (value === null) {
++            return encode(key);
++        }
++        if (Array.isArray(value)) {
++            return value.filter(function (item) { return item !== undefined; }).map(function (item) {
++                return item === null ? encode(key) : encode(key) + "=" + encode(item);
++            }).join("&");
++        }
++        return encode(key) + "=" + encode(value);
++    }).filter(function (part) { return part.length > 0; }).join("&");
 +}
-+
-+exports.stringify = stringify;
-+exports.resolveQueryString = resolveQueryString;
+ const matchers_1 = require("../matchers");
+ function validatePathConfig({ preserveDynamicRoutes, preserveGroups, shouldEncodeURISegment, ...options }) {
+     (0, native_1.validatePathConfig)(options);
+@@ -54,7 +82,7 @@
+ }
+ exports.fixCurrentParams = fixCurrentParams;
+ function appendQueryAndHash(path, { '#': hash, ...focusedParams }) {
+-    const query = queryString.stringify(focusedParams, { sort: false });
++    const query = stringifyParams(focusedParams, { sort: false });
+     if (query) {
+         path += `?${query}`;
+     }
 diff --git a/node_modules/expo-router/build/global-state/routeInfo.js b/node_modules/expo-router/build/global-state/routeInfo.js
-index 6ed9ac6..ae62413 100644
 --- a/node_modules/expo-router/build/global-state/routeInfo.js
 +++ b/node_modules/expo-router/build/global-state/routeInfo.js
-@@ -24,7 +24,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
+@@ -24,7 +24,35 @@
  };
  Object.defineProperty(exports, "__esModule", { value: true });
  exports.reconstructState = void 0;
 -const queryString = __importStar(require("query-string"));
-+const queryStringCompat = require("../fork/queryStringCompat");
-+const queryString = queryStringCompat.resolveQueryString(queryStringCompat);
++function stringifyParams(object, options) {
++    if (!object) {
++        return "";
++    }
++    var encode = function (value) {
++        return encodeURIComponent(value).replace(/[!'()*]/g, function (char) {
++            return "%" + char.charCodeAt(0).toString(16).toUpperCase();
++        });
++    };
++    var keys = Object.keys(object);
++    if (!options || options.sort !== false) {
++        keys.sort(options && typeof options.sort === "function" ? options.sort : undefined);
++    }
++    return keys.map(function (key) {
++        var value = object[key];
++        if (value === undefined) {
++            return "";
++        }
++        if (value === null) {
++            return encode(key);
++        }
++        if (Array.isArray(value)) {
++            return value.filter(function (item) { return item !== undefined; }).map(function (item) {
++                return item === null ? encode(key) : encode(key) + "=" + encode(item);
++            }).join("&");
++        }
++        return encode(key) + "=" + encode(value);
++    }).filter(function (part) { return part.length > 0; }).join("&");
++}
  function reconstructState(state, getState, options) {
      const segments = [];
      const allParams = {};
+@@ -47,7 +75,7 @@
+         segments.pop();
+     }
+     let path = `/${segments.filter(Boolean).join('/')}`;
+-    const query = queryString.stringify(allParams, { sort: false });
++    const query = stringifyParams(allParams, { sort: false });
+     if (query) {
+         path += `?${query}`;
+     }
